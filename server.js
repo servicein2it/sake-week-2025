@@ -86,72 +86,41 @@ app.get("/test", (req, res) => {
 });
 
 // webhook endpoint สำหรับรับการแจ้งเตือนการชำระเงินจาก LINE My Shop
-app.post("/webhook/line-myshop", (req, res) => {
-  // ส่ง response กลับไปยัง LINE Platform ทันที
-  res.status(200).send("OK");
-
-  // บันทึกข้อมูลที่ได้รับ
-  console.log("Webhook headers:", req.headers);
-  console.log("Webhook body:", JSON.stringify(req.body, null, 2));
-
+// เพิ่มโค้ดนี้ในไฟล์ server.js
+app.post('/webhook/line-myshop', (req, res) => {
+  // ตอบกลับทันทีเพื่อป้องกัน timeout
+  res.status(200).send('OK');
+  
+  // ล็อกข้อมูลทั้งหมดที่ได้รับ
+  console.log('WEBHOOK RECEIVED:', JSON.stringify({
+    headers: req.headers,
+    body: req.body
+  }, null, 2));
+  
   try {
-    // ตรวจสอบ signature (จะปิดการใช้งานชั่วคราวเพื่อการทดสอบ)
-    /* 
-    const lineSignature = req.headers['x-line-signature'];
-    if (!lineSignature || !verifyLineSignature(lineSignature, req.rawBody)) {
-      console.error('Invalid signature');
-      return;
-    }
-    */
-
-    // ตรวจสอบประเภทของเหตุการณ์
-    const event = req.body.events?.[0];
-    if (!event) {
-      console.error("No event data");
-      return;
-    }
-
-    // Log ประเภทของ event ที่ได้รับ
-    console.log("Event type:", event.type);
-    console.log("Event source:", event.source);
-
-    // ตรวจสอบหลายประเภทของ event ที่อาจเกี่ยวข้องกับการชำระเงิน
-    // 1. การชำระเงินผ่าน LINE Pay
-    if (
-      event.type === "things" &&
-      event.things?.type === "payment" &&
-      event.things?.result === "success"
-    ) {
-      handlePaymentComplete(event);
-    }
-    // 2. ข้อความแจ้งเตือนการชำระเงิน
-    else if (
-      event.type === "message" &&
-      event.message?.text?.includes("ชำระเงิน") &&
-      event.message?.text?.includes("สำเร็จ")
-    ) {
-      handlePaymentComplete(event);
-    }
-    // 3. Postback event จากการทำธุรกรรม
-    else if (
-      event.type === "postback" &&
-      event.postback?.data?.includes("payment_success")
-    ) {
-      handlePaymentComplete(event);
-    }
-    // 4. Webhook generic event สำหรับการสั่งซื้อ
-    else if (
-      event.type === "webhook" ||
-      event.type === "order.paid" ||
-      event.type === "purchase_completed"
-    ) {
-      handlePaymentComplete(event);
+    // ตรวจสอบทุกรูปแบบของข้อมูลที่อาจเกี่ยวข้องกับการชำระเงิน
+    const event = req.body.events?.[0] || req.body;
+    const userId = event.source?.userId || event.userId || req.body.userId;
+    
+    // ล็อกข้อมูลที่สำคัญ
+    console.log('Event type:', typeof event === 'object' ? JSON.stringify(event) : 'No event data');
+    console.log('User ID extracted:', userId);
+    
+    // ถ้ามี userId ให้ส่งข้อความทดสอบไปเสมอ (สำหรับการทดสอบ)
+    if (userId) {
+      const jotformUrl = createJotformUrl(userId);
+      const message = `ขอบคุณสำหรับการสั่งซื้อ! กรุณากรอกแบบฟอร์มเพิ่มเติมที่ลิงก์นี้: ${jotformUrl}`;
+      
+      sendLineMessage(userId, message)
+        .then(() => console.log('Test message sent successfully to', userId))
+        .catch(err => console.error('Failed to send message:', err));
+    } else {
+      console.error('No user ID found in webhook data');
     }
   } catch (error) {
-    console.error("Error processing webhook:", error);
+    console.error('Error processing webhook:', error);
   }
 });
-
 // ฟังก์ชันจัดการกับการชำระเงินที่เสร็จสมบูรณ์
 function handlePaymentComplete(event) {
   const userId = event.source?.userId;
